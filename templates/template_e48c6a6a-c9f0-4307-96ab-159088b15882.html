@@ -1,0 +1,758 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>assignIT Permissions Chart</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Inter', sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+        }
+        
+        .glass-effect {
+            background: rgba(255, 255, 255, 0.95);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        
+        .hover-lift {
+            transition: all 0.3s ease;
+        }
+        
+        .hover-lift:hover {
+            transform: translateY(-4px);
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        
+        .permission-icon {
+            width: 20px;
+            height: 20px;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 6px;
+            margin-right: 12px;
+        }
+        
+        .role-badge {
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-weight: 600;
+            font-size: 0.875rem;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+        }
+        
+        .status-flow {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        
+        .status-item {
+            padding: 12px 20px;
+            border-radius: 12px;
+            font-weight: 600;
+            font-size: 0.875rem;
+            border: 2px solid;
+            position: relative;
+            transition: all 0.3s ease;
+        }
+        
+        .status-item:hover {
+            transform: scale(1.05);
+        }
+        
+        .arrow {
+            font-size: 1.5rem;
+            color: #9CA3AF;
+            animation: pulse 2s infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { opacity: 0.6; }
+            50% { opacity: 1; }
+        }
+        
+        .feature-card {
+            border-radius: 16px;
+            padding: 24px;
+            border: 2px solid;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .feature-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: linear-gradient(90deg, var(--accent-color), var(--accent-color-light));
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-8px);
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+        }
+        
+        .rule-card {
+            border-radius: 12px;
+            padding: 20px;
+            border-left: 4px solid;
+            transition: all 0.3s ease;
+        }
+        
+        .rule-card:hover {
+            transform: translateX(8px);
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1);
+        }
+        
+        .table-container {
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        }
+        
+        .table-header {
+            background: linear-gradient(135deg, #f8fafc 0%, #e2e8f0 100%);
+            padding: 20px 24px;
+            border-bottom: 2px solid #e2e8f0;
+        }
+        
+        .table-row {
+            transition: all 0.2s ease;
+        }
+        
+        .table-row:hover {
+            background: linear-gradient(135deg, #f8fafc 0%, #f1f5f9 100%);
+        }
+        
+        .check-icon {
+            color: #10b981;
+            animation: checkBounce 0.6s ease;
+        }
+        
+        .x-icon {
+            color: #ef4444;
+            animation: xShake 0.6s ease;
+        }
+        
+        @keyframes checkBounce {
+            0% { transform: scale(0); }
+            50% { transform: scale(1.2); }
+            100% { transform: scale(1); }
+        }
+        
+        @keyframes xShake {
+            0%, 100% { transform: rotate(0deg); }
+            25% { transform: rotate(-5deg); }
+            75% { transform: rotate(5deg); }
+        }
+        
+        .gradient-text {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+        
+        .floating {
+            animation: floating 3s ease-in-out infinite;
+        }
+        
+        @keyframes floating {
+            0%, 100% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+        }
+    </style>
+</head>
+<body class="py-8">
+    <div class="max-w-7xl mx-auto px-6">
+        <!-- Header -->
+        <div class="text-center mb-12">
+            <div class="glass-effect rounded-2xl p-8 mb-8 floating">
+                <h1 class="text-5xl font-bold gradient-text mb-4">assignIT Permissions Chart</h1>
+                <p class="text-xl text-gray-600">Comprehensive role-based access control system</p>
+                <div class="mt-6 flex justify-center gap-4">
+                    <span class="bg-green-100 text-green-800 px-4 py-2 rounded-full text-sm font-medium">
+                        <i class="fas fa-check-circle mr-2"></i>Active System
+                    </span>
+                    <span class="bg-blue-100 text-blue-800 px-4 py-2 rounded-full text-sm font-medium">
+                        <i class="fas fa-shield-alt mr-2"></i>Secure Access
+                    </span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Permissions Table -->
+        <div class="glass-effect rounded-2xl overflow-hidden mb-12 hover-lift">
+            <div class="table-header">
+                <h2 class="text-2xl font-bold text-gray-800 flex items-center">
+                    <i class="fas fa-table mr-3 text-blue-600"></i>
+                    System Permissions Matrix
+                </h2>
+                <p class="text-gray-600 mt-2">Detailed breakdown of capabilities for each role</p>
+            </div>
+            
+            <div class="overflow-x-auto">
+                <table class="w-full">
+                    <thead class="bg-gradient-to-r from-gray-50 to-gray-100">
+                        <tr>
+                            <th class="px-8 py-6 text-left font-semibold text-gray-700 text-lg">Permission</th>
+                            <th class="px-6 py-6 text-center">
+                                <div class="role-badge bg-gradient-to-r from-red-500 to-red-600 text-white">
+                                    Super Admin
+                                </div>
+                            </th>
+                            <th class="px-6 py-6 text-center">
+                                <div class="role-badge bg-gradient-to-r from-orange-500 to-orange-600 text-white">
+                                    Admin
+                                </div>
+                            </th>
+                            <th class="px-6 py-6 text-center">
+                                <div class="role-badge bg-gradient-to-r from-blue-500 to-blue-600 text-white">
+                                    HOD
+                                </div>
+                            </th>
+                            <th class="px-6 py-6 text-center">
+                                <div class="role-badge bg-gradient-to-r from-green-500 to-green-600 text-white">
+                                    Manager
+                                </div>
+                            </th>
+                            <th class="px-6 py-6 text-center">
+                                <div class="role-badge bg-gradient-to-r from-purple-500 to-purple-600 text-white">
+                                    Member
+                                </div>
+                            </th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="table-row border-b border-gray-200">
+                            <td class="px-8 py-6 font-semibold text-gray-700 flex items-center">
+                                <div class="permission-icon bg-blue-100 text-blue-600">
+                                    <i class="fas fa-users"></i>
+                                </div>
+                                Create Users
+                            </td>
+                            <td class="px-6 py-6 text-center">
+                                <i class="fas fa-check-circle check-icon text-2xl"></i>
+                            </td>
+                            <td class="px-6 py-6 text-center">
+                                <i class="fas fa-check-circle check-icon text-2xl"></i>
+                            </td>
+                            <td class="px-6 py-6 text-center">
+                                <i class="fas fa-times-circle x-icon text-2xl"></i>
+                            </td>
+                            <td class="px-6 py-6 text-center">
+                                <i class="fas fa-times-circle x-icon text-2xl"></i>
+                            </td>
+                            <td class="px-6 py-6 text-center">
+                                <i class="fas fa-times-circle x-icon text-2xl"></i>
+                            </td>
+                        </tr>
+                        <tr class="table-row border-b border-gray-200">
+                            <td class="px-8 py-6 font-semibold text-gray-700 flex items-center">
+                                <div class="permission-icon bg-green-100 text-green-600">
+                                    <i class="fas fa-cogs"></i>
+                                </div>
+                                Manage Departments
+                            </td>
+                            <td class="px-6 py-6 text-center">
+                                <i class="fas fa-check-circle check-icon text-2xl"></i>
+                            </td>
+                            <td class="px-6 py-6 text-center">
+                                <i class="fas fa-check-circle check-icon text-2xl"></i>
+                            </td>
+                            <td class="px-6 py-6 text-center">
+                                <i class="fas fa-times-circle x-icon text-2xl"></i>
+                            </td>
+                            <td class="px-6 py-6 text-center">
+                                <i class="fas fa-times-circle x-icon text-2xl"></i>
+                            </td>
+                            <td class="px-6 py-6 text-center">
+                                <i class="fas fa-times-circle x-icon text-2xl"></i>
+                            </td>
+                        </tr>
+                        <tr class="table-row border-b border-gray-200">
+                            <td class="px-8 py-6 font-semibold text-gray-700 flex items-center">
+                                <div class="permission-icon bg-purple-100 text-purple-600">
+                                    <i class="fas fa-file-alt"></i>
+                                </div>
+                                Create Private Tasks
+                            </td>
+                            <td class="px-6 py-6 text-center">
+                                <i class="fas fa-check-circle check-icon text-2xl"></i>
+                            </td>
+                            <td class="px-6 py-6 text-center">
+                                <i class="fas fa-check-circle check-icon text-2xl"></i>
+                            </td>
+                            <td class="px-6 py-6 text-center">
+                                <i class="fas fa-check-circle check-icon text-2xl"></i>
+                            </td>
+                            <td class="px-6 py-6 text-center">
+                                <i class="fas fa-check-circle check-icon text-2xl"></i>
+                            </td>
+                            <td class="px-6 py-6 text-center">
+                                <i class="fas fa-check-circle check-icon text-2xl"></i>
+                            </td>
+                        </tr>
+                        <tr class="table-row border-b border-gray-200">
+                            <td class="px-8 py-6 font-semibold text-gray-700 flex items-center">
+                                <div class="permission-icon bg-yellow-100 text-yellow-600">
+                                    <i class="fas fa-eye"></i>
+                                </div>
+                                View All Dept Tasks
+                            </td>
+                            <td class="px-6 py-6 text-center">
+                                <i class="fas fa-check-circle check-icon text-2xl"></i>
+                            </td>
+                            <td class="px-6 py-6 text-center">
+                                <i class="fas fa-check-circle check-icon text-2xl"></i>
+                            </td>
+                            <td class="px-6 py-6 text-center">
+                                <i class="fas fa-times-circle x-icon text-2xl"></i>
+                            </td>
+                            <td class="px-6 py-6 text-center">
+                                <i class="fas fa-times-circle x-icon text-2xl"></i>
+                            </td>
+                            <td class="px-6 py-6 text-center">
+                                <i class="fas fa-times-circle x-icon text-2xl"></i>
+                            </td>
+                        </tr>
+                        <tr class="table-row">
+                            <td class="px-8 py-6 font-semibold text-gray-700 flex items-center">
+                                <div class="permission-icon bg-red-100 text-red-600">
+                                    <i class="fas fa-shield-alt"></i>
+                                </div>
+                                Verify Task Completion
+                            </td>
+                            <td class="px-6 py-6 text-center">
+                                <i class="fas fa-check-circle check-icon text-2xl"></i>
+                            </td>
+                            <td class="px-6 py-6 text-center">
+                                <i class="fas fa-check-circle check-icon text-2xl"></i>
+                            </td>
+                            <td class="px-6 py-6 text-center">
+                                <i class="fas fa-check-circle check-icon text-2xl"></i>
+                            </td>
+                            <td class="px-6 py-6 text-center">
+                                <i class="fas fa-check-circle check-icon text-2xl"></i>
+                            </td>
+                            <td class="px-6 py-6 text-center">
+                                <i class="fas fa-check-circle check-icon text-2xl"></i>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+
+        <!-- Task Assignment Rules -->
+        <div class="glass-effect rounded-2xl overflow-hidden mb-12 hover-lift">
+            <div class="table-header">
+                <h2 class="text-2xl font-bold text-gray-800 flex items-center">
+                    <i class="fas fa-tasks mr-3 text-green-600"></i>
+                    Task Assignment Rules
+                </h2>
+                <p class="text-gray-600 mt-2">Who can assign tasks to whom</p>
+            </div>
+            <div class="p-8">
+                <div class="space-y-4">
+                    <div class="flex items-center gap-6 p-4 bg-gradient-to-r from-red-50 to-red-100 rounded-xl">
+                        <div class="role-badge bg-gradient-to-r from-red-500 to-red-600 text-white">
+                            Super Admin
+                        </div>
+                        <div class="text-gray-700 font-medium">can assign tasks to:</div>
+                        <div class="bg-red-200 text-red-800 px-4 py-2 rounded-full text-sm font-semibold">
+                            Anyone in organization
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-6 p-4 bg-gradient-to-r from-orange-50 to-orange-100 rounded-xl">
+                        <div class="role-badge bg-gradient-to-r from-orange-500 to-orange-600 text-white">
+                            Admin
+                        </div>
+                        <div class="text-gray-700 font-medium">can assign tasks to:</div>
+                        <div class="bg-orange-200 text-orange-800 px-4 py-2 rounded-full text-sm font-semibold">
+                            HOD, Manager, Member
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-6 p-4 bg-gradient-to-r from-blue-50 to-blue-100 rounded-xl">
+                        <div class="role-badge bg-gradient-to-r from-blue-500 to-blue-600 text-white">
+                            HOD
+                        </div>
+                        <div class="text-gray-700 font-medium">can assign tasks to:</div>
+                        <div class="bg-blue-200 text-blue-800 px-4 py-2 rounded-full text-sm font-semibold">
+                            Manager, Member (own dept)
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-6 p-4 bg-gradient-to-r from-green-50 to-green-100 rounded-xl">
+                        <div class="role-badge bg-gradient-to-r from-green-500 to-green-600 text-white">
+                            Manager
+                        </div>
+                        <div class="text-gray-700 font-medium">can assign tasks to:</div>
+                        <div class="bg-green-200 text-green-800 px-4 py-2 rounded-full text-sm font-semibold">
+                            Manager, Member (own dept)
+                        </div>
+                    </div>
+                    <div class="flex items-center gap-6 p-4 bg-gradient-to-r from-purple-50 to-purple-100 rounded-xl">
+                        <div class="role-badge bg-gradient-to-r from-purple-500 to-purple-600 text-white">
+                            Member
+                        </div>
+                        <div class="text-gray-700 font-medium">can assign tasks to:</div>
+                        <div class="bg-purple-200 text-purple-800 px-4 py-2 rounded-full text-sm font-semibold">
+                            Member (own dept)
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Task Flow -->
+        <div class="glass-effect rounded-2xl overflow-hidden mb-12 hover-lift">
+            <div class="table-header">
+                <h2 class="text-2xl font-bold text-gray-800 flex items-center">
+                    <i class="fas fa-project-diagram mr-3 text-purple-600"></i>
+                    Task Status Flow
+                </h2>
+                <p class="text-gray-600 mt-2">Complete lifecycle of task progression</p>
+            </div>
+            <div class="p-8">
+                <div class="status-flow">
+                    <div class="status-item bg-blue-100 text-blue-800 border-blue-300">
+                        <i class="fas fa-paper-plane mr-2"></i>Assigned
+                    </div>
+                    <div class="arrow">→</div>
+                    <div class="status-item bg-blue-100 text-blue-800 border-blue-300">
+                        <i class="fas fa-spinner mr-2"></i>In Progress
+                    </div>
+                    <div class="arrow">→</div>
+                    <div class="status-item bg-blue-100 text-blue-800 border-blue-300">
+                        <i class="fas fa-check mr-2"></i>Completed
+                    </div>
+                    <div class="arrow">→</div>
+                    <div class="status-item bg-yellow-100 text-yellow-800 border-yellow-300">
+                        <i class="fas fa-clock mr-2"></i>Pending Verification
+                    </div>
+                    <div class="arrow">→</div>
+                    <div class="status-item bg-green-100 text-green-800 border-green-300">
+                        <i class="fas fa-shield-check mr-2"></i>Verified
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Admin Panel Features -->
+        <div class="glass-effect rounded-2xl overflow-hidden mb-12 hover-lift">
+            <div class="table-header">
+                <h2 class="text-2xl font-bold text-gray-800 flex items-center">
+                    <i class="fas fa-desktop mr-3 text-indigo-600"></i>
+                    Admin Panel Features by Role
+                </h2>
+                <p class="text-gray-600 mt-2">Detailed feature access for each user type</p>
+            </div>
+            <div class="p-8">
+                <div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-8">
+                    <!-- Super Admin Panel -->
+                    <div class="feature-card bg-gradient-to-br from-red-50 to-red-100 border-red-200" style="--accent-color: #ef4444; --accent-color-light: #fca5a5;">
+                        <div class="role-badge bg-gradient-to-r from-red-500 to-red-600 text-white mb-4">
+                            Super Admin
+                        </div>
+                        <ul class="space-y-3 text-sm">
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-check-circle text-green-500"></i>
+                                <span>Create all user types</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-check-circle text-green-500"></i>
+                                <span>Manage all departments</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-check-circle text-green-500"></i>
+                                <span>View all tasks & analytics</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-check-circle text-green-500"></i>
+                                <span>System-wide audit logs</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-check-circle text-green-500"></i>
+                                <span>Global task management</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-check-circle text-green-500"></i>
+                                <span>System settings & config</span>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- Admin Panel -->
+                    <div class="feature-card bg-gradient-to-br from-orange-50 to-orange-100 border-orange-200" style="--accent-color: #f97316; --accent-color-light: #fdba74;">
+                        <div class="role-badge bg-gradient-to-r from-orange-500 to-orange-600 text-white mb-4">
+                            Admin
+                        </div>
+                        <ul class="space-y-3 text-sm">
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-check-circle text-green-500"></i>
+                                <span>Create HOD, Manager, Member</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-check-circle text-green-500"></i>
+                                <span>Manage departments</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-check-circle text-green-500"></i>
+                                <span>View assigned tasks only</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-check-circle text-green-500"></i>
+                                <span>Department analytics</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-times-circle text-red-500"></i>
+                                <span>System-wide task view</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-times-circle text-red-500"></i>
+                                <span>Global system settings</span>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- HOD Panel -->
+                    <div class="feature-card bg-gradient-to-br from-blue-50 to-blue-100 border-blue-200" style="--accent-color: #3b82f6; --accent-color-light: #93c5fd;">
+                        <div class="role-badge bg-gradient-to-r from-blue-500 to-blue-600 text-white mb-4">
+                            HOD
+                        </div>
+                        <ul class="space-y-3 text-sm">
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-times-circle text-red-500"></i>
+                                <span>Create users</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-times-circle text-red-500"></i>
+                                <span>Manage departments</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-check-circle text-green-500"></i>
+                                <span>View all dept tasks</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-check-circle text-green-500"></i>
+                                <span>Department analytics</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-check-circle text-green-500"></i>
+                                <span>Task assignment dashboard</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-check-circle text-green-500"></i>
+                                <span>Cross-dept handoff</span>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- Manager Panel -->
+                    <div class="feature-card bg-gradient-to-br from-green-50 to-green-100 border-green-200" style="--accent-color: #10b981; --accent-color-light: #6ee7b7;">
+                        <div class="role-badge bg-gradient-to-r from-green-500 to-green-600 text-white mb-4">
+                            Manager
+                        </div>
+                        <ul class="space-y-3 text-sm">
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-times-circle text-red-500"></i>
+                                <span>Create users</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-times-circle text-red-500"></i>
+                                <span>Manage departments</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-check-circle text-green-500"></i>
+                                <span>View assigned tasks</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-check-circle text-green-500"></i>
+                                <span>Team task dashboard</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-check-circle text-green-500"></i>
+                                <span>Task assignment (limited)</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-times-circle text-red-500"></i>
+                                <span>Department analytics</span>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- Member Panel -->
+                    <div class="feature-card bg-gradient-to-br from-purple-50 to-purple-100 border-purple-200" style="--accent-color: #8b5cf6; --accent-color-light: #c4b5fd;">
+                        <div class="role-badge bg-gradient-to-r from-purple-500 to-purple-600 text-white mb-4">
+                            Member
+                        </div>
+                        <ul class="space-y-3 text-sm">
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-times-circle text-red-500"></i>
+                                <span>Create users</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-times-circle text-red-500"></i>
+                                <span>Manage departments</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-check-circle text-green-500"></i>
+                                <span>View assigned tasks</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-check-circle text-green-500"></i>
+                                <span>Personal task dashboard</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-check-circle text-green-500"></i>
+                                <span>Basic task assignment</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-times-circle text-red-500"></i>
+                                <span>Analytics access</span>
+                            </li>
+                        </ul>
+                    </div>
+
+                    <!-- Common Features -->
+                    <div class="feature-card bg-gradient-to-br from-gray-50 to-gray-100 border-gray-200" style="--accent-color: #6b7280; --accent-color-light: #d1d5db;">
+                        <div class="role-badge bg-gradient-to-r from-gray-600 to-gray-700 text-white mb-4">
+                            All Users
+                        </div>
+                        <ul class="space-y-3 text-sm">
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-check-circle text-green-500"></i>
+                                <span>Personal notifications</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-check-circle text-green-500"></i>
+                                <span>Private task management</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-check-circle text-green-500"></i>
+                                <span>Task status updates</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-check-circle text-green-500"></i>
+                                <span>Profile settings</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-check-circle text-green-500"></i>
+                                <span>Task forwarding</span>
+                            </li>
+                            <li class="flex items-center gap-3">
+                                <i class="fas fa-check-circle text-green-500"></i>
+                                <span>Activity history</span>
+                            </li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Key Rules -->
+        <div class="glass-effect rounded-2xl overflow-hidden hover-lift">
+            <div class="table-header">
+                <h2 class="text-2xl font-bold text-gray-800 flex items-center">
+                    <i class="fas fa-exclamation-triangle mr-3 text-yellow-600"></i>
+                    Important System Rules
+                </h2>
+                <p class="text-gray-600 mt-2">Critical guidelines for system operation</p>
+            </div>
+            <div class="p-8">
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+                    <div class="rule-card bg-gradient-to-r from-blue-50 to-blue-100 border-blue-400">
+                        <h3 class="font-bold text-blue-800 mb-3 flex items-center">
+                            <i class="fas fa-shield-check mr-2"></i>
+                            Task Verification
+                        </h3>
+                        <p class="text-sm text-blue-700">Only the original task creator can verify task completion. This ensures accountability and prevents unauthorized approvals.</p>
+                    </div>
+                    <div class="rule-card bg-gradient-to-r from-green-50 to-green-100 border-green-400">
+                        <h3 class="font-bold text-green-800 mb-3 flex items-center">
+                            <i class="fas fa-user-secret mr-2"></i>
+                            Private Tasks
+                        </h3>
+                        <p class="text-sm text-green-700">All users can create private tasks (personal to-do items) that are visible only to themselves for personal organization.</p>
+                    </div>
+                    <div class="rule-card bg-gradient-to-r from-purple-50 to-purple-100 border-purple-400">
+                        <h3 class="font-bold text-purple-800 mb-3 flex items-center">
+                            <i class="fas fa-building mr-2"></i>
+                            Department Limits
+                        </h3>
+                        <p class="text-sm text-purple-700">Users can only assign tasks within their department (except HODs who have cross-department capabilities).</p>
+                    </div>
+                    <div class="rule-card bg-gradient-to-r from-orange-50 to-orange-100 border-orange-400">
+                        <h3 class="font-bold text-orange-800 mb-3 flex items-center">
+                            <i class="fas fa-share mr-2"></i>
+                            Task Forwarding
+                        </h3>
+                        <p class="text-sm text-orange-700">Tasks can be forwarded to equal or lower roles within the same department to maintain organizational hierarchy.</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Footer -->
+        <div class="text-center mt-12">
+            <div class="glass-effect rounded-xl p-6">
+                <p class="text-gray-600 mb-2">assignIT Task Management System</p>
+                <p class="text-sm text-gray-500">Role-based access control with comprehensive permissions</p>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Add some interactive animations
+        document.addEventListener('DOMContentLoaded', function() {
+            // Animate elements on scroll
+            const observerOptions = {
+                threshold: 0.1,
+                rootMargin: '0px 0px -50px 0px'
+            };
+
+            const observer = new IntersectionObserver(function(entries) {
+                entries.forEach(entry => {
+                    if (entry.isIntersecting) {
+                        entry.target.style.opacity = '1';
+                        entry.target.style.transform = 'translateY(0)';
+                    }
+                });
+            }, observerOptions);
+
+            // Observe all cards and sections
+            document.querySelectorAll('.glass-effect, .feature-card, .rule-card').forEach(el => {
+                el.style.opacity = '0';
+                el.style.transform = 'translateY(20px)';
+                el.style.transition = 'opacity 0.6s ease, transform 0.6s ease';
+                observer.observe(el);
+            });
+
+            // Add hover effects to table rows
+            document.querySelectorAll('.table-row').forEach(row => {
+                row.addEventListener('mouseenter', function() {
+                    this.style.transform = 'scale(1.01)';
+                });
+                row.addEventListener('mouseleave', function() {
+                    this.style.transform = 'scale(1)';
+                });
+            });
+        });
+    </script>
+</body>
+</html>
