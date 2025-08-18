@@ -1,7 +1,7 @@
 import smtplib, time
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from utils import load_json, save_json
+from database import db
 import datetime
 
 def send_email(sender_email, sender_pass, recipient_email, subject, html_template):
@@ -81,15 +81,8 @@ def log_email_send(sender_email, recipient_email, subject, success, error_msg):
         "error": error_msg
     }
     
-    # Load existing logs
-    logs = load_json("email_logs.json", [])
-    logs.append(log_entry)
-    
-    # Keep only last 1000 entries to prevent file from growing too large
-    if len(logs) > 1000:
-        logs = logs[-1000:]
-    
-    save_json("email_logs.json", logs)
+    # Save log entry to MongoDB
+    db.save_email_log(log_entry)
 
 def validate_app_password(password):
     """

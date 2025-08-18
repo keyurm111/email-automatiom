@@ -1,0 +1,24 @@
+[Unit]
+Description=Bulk Email Campaign Runner Service
+After=network.target mongod.service
+Wants=mongod.service
+
+[Service]
+Type=simple
+User=your-username
+WorkingDirectory=/path/to/your/project
+Environment=PATH=/path/to/your/venv/bin
+ExecStart=/path/to/your/venv/bin/python campaign_runner.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+# Security settings
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ReadWritePaths=/path/to/your/project
+
+[Install]
+WantedBy=multi-user.target

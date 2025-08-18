@@ -6,7 +6,8 @@ import datetime
 import threading
 import uuid
 from email_sender import send_email, check_sender_health, validate_app_password
-from utils import load_json, save_json
+from database import db, load_json, save_json
+from campaign_runner import start_campaign_runner
 
 SENDER_FILE = "senders.json"
 HISTORY_FILE = "sent_log.json"
@@ -23,6 +24,18 @@ if 'current_campaign_id' not in st.session_state:
     st.session_state.current_campaign_id = None
 if 'show_campaign_details' not in st.session_state:
     st.session_state.show_campaign_details = None
+
+# Initialize background campaign runner
+try:
+    # Only start campaign runner if not already running
+    if 'campaign_runner_ready' not in st.session_state:
+        campaign_runner = start_campaign_runner()
+        st.session_state.campaign_runner_ready = True
+        st.session_state.campaign_runner = campaign_runner
+except Exception as e:
+    st.error(f"Failed to start campaign runner: {e}")
+    st.session_state.campaign_runner_ready = False
+    st.session_state.campaign_runner = None
 
 # Sidebar for navigation
 st.sidebar.title("🎯 Navigation")
@@ -65,7 +78,51 @@ if page == "🏠 Dashboard":
         5. Copy the 16-character password (spaces included)
         """)
     
-    # Quick stats
+    # Campaign Runner Status
+    if st.session_state.get('campaign_runner_ready'):
+        campaign_runner = st.session_state.get('campaign_runner')
+        if campaign_runner:
+            runner_status = campaign_runner.get_status()
+            
+            with st.expander("🔄 Background Campaign Runner Status", expanded=False):
+                col1, col2, col3, col4 = st.columns(4)
+                
+                with col1:
+                    st.metric("Service Status", "🟢 Running" if runner_status['scheduler_running'] else "🔴 Stopped")
+                
+                with col2:
+                    st.metric("Running Campaigns", runner_status['running_campaigns'])
+                
+                with col3:
+                    st.metric("Scheduled Jobs", runner_status['scheduled_jobs'])
+                
+                with col4:
+                    if runner_status['running_campaigns'] > 0:
+                        st.metric("Active Campaigns", runner_status['running_campaigns'])
+                    else:
+                        st.metric("Active Campaigns", 0)
+                
+                # Show running campaign details
+                if runner_status['campaigns']:
+                    st.write("**Currently Running Campaigns:**")
+                    for campaign_info in runner_status['campaigns']:
+                        st.write(f"• Campaign ID: {campaign_info['id'][:8]}... | Started: {campaign_info['started_at']}")
+                
+                # Manual controls
+                col1, col2 = st.columns(2)
+                with col1:
+                    if st.button("🔄 Refresh Status"):
+                        st.rerun()
+                
+                with col2:
+                    if st.button("📊 View Logs"):
+                        st.session_state.show_runner_logs = True
+        else:
+            st.warning("⚠️ Campaign Runner not available")
+    else:
+        st.error("❌ Campaign Runner failed to start")
+    
+    # Quick stats with real-time updates
     col1, col2, col3, col4 = st.columns(4)
     
     with col1:
@@ -79,8 +136,42 @@ if page == "🏠 Dashboard":
         st.metric("Active Campaigns", active_campaigns)
     
     with col4:
-        total_sent = sum(c['stats']['total_sent'] for c in campaigns.values())
+        # Calculate real-time total sent from history
+        total_sent = 0
+        total_failed = 0
+        total_pending = 0
+        
+        for campaign_id, campaign in campaigns.items():
+            history = load_json(HISTORY_FILE, {})
+            campaign_history = history.get(campaign_id, {})
+            
+            sent_count = len(campaign_history.get("sent", []))
+            failed_count = len(campaign_history.get("failed", []))
+            leads_count = campaign['stats']['total_leads']
+            
+            total_sent += sent_count
+            total_failed += failed_count
+            total_pending += max(0, leads_count - sent_count - failed_count)
+        
         st.metric("Total Emails Sent", total_sent)
+    
+    # Additional real-time stats
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Total Failed", total_failed)
+    
+    with col2:
+        st.metric("Pending Emails", total_pending)
+    
+    with col3:
+        total_leads = sum(c['stats']['total_leads'] for c in campaigns.values())
+        success_rate = (total_sent / total_leads * 100) if total_leads > 0 else 0
+        st.metric("Success Rate", f"{success_rate:.1f}%")
+    
+    with col4:
+        completion_rate = ((total_sent + total_failed) / total_leads * 100) if total_leads > 0 else 0
+        st.metric("Completion Rate", f"{completion_rate:.1f}%")
     
     # Quick actions
     st.subheader("⚡ Quick Actions")
@@ -122,16 +213,23 @@ if page == "🏠 Dashboard":
                     if st.button("▶️ Start", key=f"quick_start_{campaign_id}"):
                         if len(campaign['selected_senders']) == 0:
                             st.error("No senders selected!")
-                        elif not campaign.get('leads_file'):
+                        elif not campaign.get('leads_file_id'):
                             st.error("No leads uploaded!")
-                        elif not campaign.get('template_file'):
+                        elif not campaign.get('template_file_id'):
                             st.error("No template uploaded!")
                         else:
-                            st.session_state.current_campaign_id = campaign_id
-                            st.session_state.campaign_running = True
-                            campaigns[campaign_id]['status'] = 'running'
-                            save_json(CAMPAIGNS_FILE, campaigns)
-                            st.rerun()
+                            # Start campaign using background runner
+                            if st.session_state.get('campaign_runner_ready'):
+                                campaign_runner = st.session_state.get('campaign_runner')
+                                if campaign_runner and campaign_runner.start_campaign(campaign_id):
+                                    campaigns[campaign_id]['status'] = 'running'
+                                    save_json(CAMPAIGNS_FILE, campaigns)
+                                    st.success(f"✅ Campaign '{campaign['name']}' started in background")
+                                    st.rerun()
+                                else:
+                                    st.error("❌ Failed to start campaign in background")
+                            else:
+                                st.error("❌ Background campaign runner not available")
                 
                 with col3:
                     if st.button("⚙️ Manage", key=f"quick_manage_{campaign_id}"):
@@ -139,6 +237,70 @@ if page == "🏠 Dashboard":
                         st.rerun()
     else:
         st.info("No campaigns yet. Create your first campaign!")
+    
+    # Real-time campaign progress
+    if campaigns:
+        st.subheader("📊 Live Campaign Progress")
+        
+        # Create progress cards for each campaign
+        for campaign_id, campaign in campaigns.items():
+            history = load_json(HISTORY_FILE, {})
+            campaign_history = history.get(campaign_id, {})
+            
+            sent_count = len(campaign_history.get("sent", []))
+            failed_count = len(campaign_history.get("failed", []))
+            leads_count = campaign['stats']['total_leads']
+            pending_count = max(0, leads_count - sent_count - failed_count)
+            
+            # Calculate progress
+            progress = ((sent_count + failed_count) / leads_count) if leads_count > 0 else 0
+            success_rate = (sent_count / leads_count * 100) if leads_count > 0 else 0
+            
+            # Get daily progress
+            today = datetime.date.today().isoformat()
+            daily_sent = campaign_history.get("daily_sent_tracking", {}).get(today, 0)
+            daily_limit = campaign.get('daily_limit', 120)
+            
+            with st.container():
+                st.markdown("---")
+                col1, col2, col3, col4 = st.columns([3, 2, 2, 1])
+                
+                with col1:
+                    st.write(f"**{campaign['name']}**")
+                    st.write(f"Status: {campaign['status'].title()}")
+                    
+                    # Progress bar
+                    st.progress(progress)
+                    st.write(f"Progress: {progress:.1%}")
+                
+                with col2:
+                    st.write("**📊 Metrics**")
+                    st.write(f"Sent: {sent_count}")
+                    st.write(f"Failed: {failed_count}")
+                    st.write(f"Pending: {pending_count}")
+                
+                with col3:
+                    st.write("**📈 Performance**")
+                    st.write(f"Success Rate: {success_rate:.1f}%")
+                    st.write(f"Today: {daily_sent}/{daily_limit}")
+                    
+                    # Daily progress bar
+                    daily_progress = daily_sent / daily_limit if daily_limit > 0 else 0
+                    st.progress(daily_progress)
+                
+                with col4:
+                    if campaign['status'] == 'running':
+                        st.success("🟢 Running")
+                    elif campaign['status'] == 'paused':
+                        st.warning("🟡 Paused")
+                    elif campaign['status'] == 'completed':
+                        st.info("🔵 Completed")
+                    else:
+                        st.info("⚪ Ready")
+                    
+                    if st.button("📋 Details", key=f"details_{campaign_id}"):
+                        st.session_state.show_campaign_details = campaign_id
+                        st.rerun()
 
 # Manage Senders Page
 elif page == "📧 Manage Senders":
@@ -314,16 +476,23 @@ elif page == "📋 Manage Campaigns":
                     if st.button("▶️ Start", key=f"start_{campaign_id}"):
                         if len(campaign['selected_senders']) == 0:
                             st.error("No senders selected!")
-                        elif not campaign.get('leads_file'):
+                        elif not campaign.get('leads_file_id'):
                             st.error("No leads uploaded!")
-                        elif not campaign.get('template_file'):
+                        elif not campaign.get('template_file_id'):
                             st.error("No template uploaded!")
                         else:
-                            st.session_state.current_campaign_id = campaign_id
-                            st.session_state.campaign_running = True
-                            campaigns[campaign_id]['status'] = 'running'
-                            save_json(CAMPAIGNS_FILE, campaigns)
-                            st.rerun()
+                            # Start campaign using background runner
+                            if st.session_state.get('campaign_runner_ready'):
+                                campaign_runner = st.session_state.get('campaign_runner')
+                                if campaign_runner and campaign_runner.start_campaign(campaign_id):
+                                    campaigns[campaign_id]['status'] = 'running'
+                                    save_json(CAMPAIGNS_FILE, campaigns)
+                                    st.success(f"✅ Campaign '{campaign['name']}' started in background")
+                                    st.rerun()
+                                else:
+                                    st.error("❌ Failed to start campaign in background")
+                            else:
+                                st.error("❌ Background campaign runner not available")
                 
                 with col4:
                     if st.button("🗑️ Delete", key=f"delete_{campaign_id}"):
@@ -351,8 +520,8 @@ if st.session_state.get('show_campaign_details'):
     # Setup progress indicator
     setup_steps = [
         ("📧 Select Senders", len(campaign['selected_senders']) > 0),
-        ("📊 Upload Leads", campaign.get('leads_file') is not None),
-        ("📝 Upload Template", campaign.get('template_file') is not None),
+        ("📊 Upload Leads", campaign.get('leads_file_id') is not None),
+        ("📝 Upload Template", campaign.get('template_file_id') is not None),
         ("⚙️ Configure Settings", campaign.get('subject_line') != "")
     ]
     
@@ -403,54 +572,94 @@ if st.session_state.get('show_campaign_details'):
     with tab2:
         st.write("**Upload Leads for this Campaign:**")
         
-        if not campaign.get('leads_file') or not os.path.exists(campaign['leads_file']):
+        if not campaign.get('leads_file_id'):
             leads_file = st.file_uploader("Upload CSV file with email addresses", type=["csv"])
             
             if leads_file:
-                df_leads = pd.read_csv(leads_file)
-                campaign['leads_file'] = f"uploads/leads_{campaign_id}.csv"
-                df_leads.to_csv(campaign['leads_file'], index=False)
-                campaign['stats']['total_leads'] = len(df_leads)
-                save_json(CAMPAIGNS_FILE, campaigns)
+                # Read CSV data once and store in MongoDB
+                csv_content = leads_file.getbuffer()
+                file_id = db.store_csv_leads(campaign_id, csv_content, leads_file.name)
                 
-                st.success(f"✅ Uploaded {len(df_leads)} leads")
-                st.dataframe(df_leads.head())
+                if file_id:
+                    # Read CSV data for display (before getbuffer() consumed it)
+                    leads_file.seek(0)  # Reset file pointer to beginning
+                    df_leads = pd.read_csv(leads_file)
+                    
+                    campaign['leads_file_id'] = file_id
+                    campaign['leads_filename'] = leads_file.name
+                    campaign['stats']['total_leads'] = len(df_leads)
+                    save_json(CAMPAIGNS_FILE, campaigns)
+                    
+                    st.success(f"✅ Uploaded {campaign['stats']['total_leads']} leads to MongoDB")
+                    st.dataframe(df_leads.head())
+                else:
+                    st.error("❌ Failed to store leads in database")
         else:
-            df_leads = pd.read_csv(campaign['leads_file'])
-            st.success(f"✅ {len(df_leads)} leads uploaded")
-            st.dataframe(df_leads.head())
-            
-            if st.button("🗑️ Remove Leads"):
-                campaign['leads_file'] = None
-                campaign['stats']['total_leads'] = 0
+            # Load leads from MongoDB
+            df_leads = db.get_csv_as_dataframe(campaign_id)
+            if df_leads is not None:
+                st.success(f"✅ {len(df_leads)} leads loaded from MongoDB")
+                st.dataframe(df_leads.head())
+                
+                if st.button("🗑️ Remove Leads"):
+                    # Delete from MongoDB
+                    if db.delete_file(campaign['leads_file_id']):
+                        campaign['leads_file_id'] = None
+                        campaign['leads_filename'] = None
+                        campaign['stats']['total_leads'] = 0
+                        save_json(CAMPAIGNS_FILE, campaigns)
+                        st.success("✅ Leads removed from database")
+                        st.rerun()
+                    else:
+                        st.error("❌ Failed to remove leads")
+            else:
+                st.error("❌ Failed to load leads from database")
+                # Clear invalid reference
+                campaign['leads_file_id'] = None
+                campaign['leads_filename'] = None
                 save_json(CAMPAIGNS_FILE, campaigns)
-                st.success("✅ Leads removed")
-                st.rerun()
     
     with tab3:
         st.write("**Upload Email Template for this Campaign:**")
         
-        if not campaign.get('template_file') or not os.path.exists(campaign['template_file']):
+        if not campaign.get('template_file_id'):
             template_file = st.file_uploader("Upload HTML template", type=["html"])
             
             if template_file:
-                template = template_file.read().decode("utf-8")
-                campaign['template_file'] = f"templates/template_{campaign_id}.html"
-                with open(campaign['template_file'], "w") as f:
-                    f.write(template)
-                save_json(CAMPAIGNS_FILE, campaigns)
-                st.success("✅ Template uploaded")
+                # Read and store HTML template in MongoDB
+                html_content = template_file.getbuffer()
+                file_id = db.store_email_template(campaign_id, html_content, template_file.name)
+                
+                if file_id:
+                    campaign['template_file_id'] = file_id
+                    campaign['template_filename'] = template_file.name
+                    save_json(CAMPAIGNS_FILE, campaigns)
+                    st.success("✅ Template uploaded to MongoDB")
+                else:
+                    st.error("❌ Failed to store template in database")
         else:
-            st.success("✅ Template uploaded")
-            with open(campaign['template_file'], "r") as f:
-                template_content = f.read()
-            st.code(template_content[:500] + "..." if len(template_content) > 500 else template_content, language="html")
-            
-            if st.button("🗑️ Remove Template"):
-                campaign['template_file'] = None
+            # Load template from MongoDB
+            template_content = db.get_email_template(campaign_id)
+            if template_content:
+                st.success("✅ Template loaded from MongoDB")
+                st.code(template_content[:500] + "..." if len(template_content) > 500 else template_content, language="html")
+                
+                if st.button("🗑️ Remove Template"):
+                    # Delete from MongoDB
+                    if db.delete_file(campaign['template_file_id']):
+                        campaign['template_file_id'] = None
+                        campaign['template_filename'] = None
+                        save_json(CAMPAIGNS_FILE, campaigns)
+                        st.success("✅ Template removed from database")
+                        st.rerun()
+                    else:
+                        st.error("❌ Failed to remove template")
+            else:
+                st.error("❌ Failed to load template from database")
+                # Clear invalid reference
+                campaign['template_file_id'] = None
+                campaign['template_filename'] = None
                 save_json(CAMPAIGNS_FILE, campaigns)
-                st.success("✅ Template removed")
-                st.rerun()
     
     with tab4:
         st.write("**Campaign Settings:**")
@@ -579,11 +788,16 @@ elif page == "🎯 Active Campaign":
         
         with col1:
             if st.button("⏸️ Pause Campaign", use_container_width=True):
-                st.session_state.campaign_running = False
-                campaigns[current_campaign_id]['status'] = 'paused'
-                save_json(CAMPAIGNS_FILE, campaigns)
-                st.success("⏸️ Campaign paused")
-                st.rerun()
+                # Stop campaign using background runner
+                if st.session_state.get('campaign_runner_ready'):
+                    campaign_runner = st.session_state.get('campaign_runner')
+                    if campaign_runner and campaign_runner.stop_campaign(current_campaign_id):
+                        st.success("⏸️ Campaign paused")
+                        st.rerun()
+                    else:
+                        st.error("❌ Failed to pause campaign")
+                else:
+                    st.error("❌ Background campaign runner not available")
         
         with col2:
             if st.button("🔄 Reset Campaign", use_container_width=True):
@@ -609,7 +823,7 @@ elif page == "🎯 Active Campaign":
                 st.rerun()
         
         # Campaign execution
-        if current_campaign.get('leads_file') and os.path.exists(current_campaign['leads_file']) and current_campaign.get('template_file') and os.path.exists(current_campaign['template_file']):
+        if current_campaign.get('leads_file_id') and current_campaign.get('template_file_id'):
             st.subheader("📊 Campaign Progress")
             
             # Load campaign data
@@ -618,9 +832,13 @@ elif page == "🎯 Active Campaign":
                 history[current_campaign_id] = {}
             campaign_history = history[current_campaign_id]
             
-            df = pd.read_csv(current_campaign['leads_file'])
+            # Load leads from MongoDB
+            df = db.get_csv_as_dataframe(current_campaign_id)
+            if df is None:
+                st.error("❌ Failed to load leads from database")
+                st.stop()
             
-            # Enhanced deduplication system
+            # Enhanced deduplication system with comprehensive tracking
             sent_emails = set(campaign_history.get("sent", []))
             failed_emails = set(campaign_history.get("failed", []))
             processing_emails = set(campaign_history.get("processing", []))
@@ -641,10 +859,32 @@ elif page == "🎯 Active Campaign":
                         pass
                 campaign_history["processing_timestamps"] = valid_processing
             
-            # Create comprehensive blacklist
+            # Create comprehensive blacklist to prevent duplicates
             blacklisted_emails = sent_emails | failed_emails | processing_emails
             
-            html_template = open(current_campaign['template_file']).read()
+            # Additional deduplication: Check for duplicate emails in leads
+            unique_leads = []
+            seen_emails = set()
+            
+            for _, row in df.iterrows():
+                email = row.get('email', '').strip().lower()  # Normalize email
+                if email and email not in seen_emails and email not in blacklisted_emails:
+                    unique_leads.append(row)
+                    seen_emails.add(email)
+                elif email in seen_emails:
+                    print(f"⚠️ Duplicate email in leads: {email}")
+                elif email in blacklisted_emails:
+                    print(f"⚠️ Email already processed: {email}")
+            
+            # Update DataFrame with unique leads only
+            df = pd.DataFrame(unique_leads)
+            print(f"📊 Deduplication: {len(df)} unique leads out of {len(df) + len(blacklisted_emails)} total")
+            
+            # Load template from MongoDB
+            html_template = db.get_email_template(current_campaign_id)
+            if html_template is None:
+                st.error("❌ Failed to load template from database")
+                st.stop()
             
             limit = current_campaign.get("daily_limit", 120)
             delay_sec = int(current_campaign.get("delay", 30))
@@ -656,6 +896,9 @@ elif page == "🎯 Active Campaign":
             failed_count = len(failed_emails)
             processing_count = len(processing_emails)
             remaining = total_leads - len(blacklisted_emails)
+            
+            # Display deduplication info
+            st.info(f"🔄 **Deduplication Active**: {len(blacklisted_emails)} emails already processed, {remaining} unique emails remaining")
             
             # Calculate daily sent based on today's date
             today = datetime.date.today().isoformat()
@@ -834,70 +1077,278 @@ elif page == "🎯 Active Campaign":
     else:
         st.info("📋 No active campaign. Go to 'Manage Campaigns' to start a campaign.")
 
-# Analytics Page
+# Campaign Runner Logs Page
 elif page == "📊 Analytics":
     st.header("📊 Analytics")
     
+    # Auto-refresh every 30 seconds
+    if 'last_refresh' not in st.session_state:
+        st.session_state.last_refresh = time.time()
+    
+    # Check if it's time to refresh
+    current_time = time.time()
+    if current_time - st.session_state.last_refresh > 30:  # Refresh every 30 seconds
+        st.session_state.last_refresh = current_time
+        st.rerun()
+    
+    # Show campaign runner logs if requested
+    if st.session_state.get('show_runner_logs'):
+        st.subheader("🔄 Campaign Runner Logs")
+        
+        try:
+            with open('campaign_runner.log', 'r') as f:
+                logs = f.readlines()
+            
+            # Show last 50 lines
+            recent_logs = logs[-50:] if len(logs) > 50 else logs
+            
+            st.code(''.join(recent_logs), language='text')
+            
+            if st.button("❌ Close Logs"):
+                st.session_state.show_runner_logs = False
+                st.rerun()
+                
+        except FileNotFoundError:
+            st.info("No log file found yet. Logs will appear here once campaigns start running.")
+            if st.button("❌ Close"):
+                st.session_state.show_runner_logs = False
+                st.rerun()
+    
     if campaigns:
-        # Overall stats
+        # Overall stats with real-time updates
         st.subheader("📈 Overall Statistics")
+        
+        # Calculate comprehensive stats
+        total_sent = 0
+        total_failed = 0
+        total_leads = 0
+        total_pending = 0
+        running_campaigns = 0
+        completed_campaigns = 0
+        
+        for campaign_id, campaign in campaigns.items():
+            history = load_json(HISTORY_FILE, {})
+            campaign_history = history.get(campaign_id, {})
+            
+            sent_count = len(campaign_history.get("sent", []))
+            failed_count = len(campaign_history.get("failed", []))
+            leads_count = campaign['stats']['total_leads']
+            
+            total_sent += sent_count
+            total_failed += failed_count
+            total_leads += leads_count
+            total_pending += max(0, leads_count - sent_count - failed_count)
+            
+            if campaign['status'] == 'running':
+                running_campaigns += 1
+            elif campaign['status'] == 'completed':
+                completed_campaigns += 1
+        
+        success_rate = (total_sent / total_leads * 100) if total_leads > 0 else 0
+        completion_rate = (total_sent + total_failed) / total_leads * 100 if total_leads > 0 else 0
         
         col1, col2, col3, col4 = st.columns(4)
         
-        total_sent = sum(c['stats']['total_sent'] for c in campaigns.values())
-        total_failed = sum(c['stats']['total_failed'] for c in campaigns.values())
-        total_leads = sum(c['stats']['total_leads'] for c in campaigns.values())
-        success_rate = (total_sent / total_leads * 100) if total_leads > 0 else 0
-        
         with col1:
-            st.metric("Total Sent", total_sent)
+            st.metric("Total Sent", total_sent, delta=f"{total_sent - (st.session_state.get('last_total_sent', 0))}")
+            st.session_state.last_total_sent = total_sent
         
         with col2:
-            st.metric("Total Failed", total_failed)
+            st.metric("Total Failed", total_failed, delta=f"{total_failed - (st.session_state.get('last_total_failed', 0))}")
+            st.session_state.last_total_failed = total_failed
         
         with col3:
-            st.metric("Success Rate", f"{success_rate:.1f}%")
+            st.metric("Success Rate", f"{success_rate:.1f}%", delta=f"{success_rate - (st.session_state.get('last_success_rate', 0)):.1f}%")
+            st.session_state.last_success_rate = success_rate
         
         with col4:
             st.metric("Total Campaigns", len(campaigns))
         
-        # Campaign-specific analytics
-        st.subheader("📊 Campaign Analytics")
+        # Additional stats
+        col1, col2, col3, col4 = st.columns(4)
+        
+        with col1:
+            st.metric("Pending Emails", total_pending)
+        
+        with col2:
+            st.metric("Running Campaigns", running_campaigns)
+        
+        with col3:
+            st.metric("Completed Campaigns", completed_campaigns)
+        
+        with col4:
+            st.metric("Completion Rate", f"{completion_rate:.1f}%")
+        
+        # Campaign-specific analytics with detailed progress
+        st.subheader("📊 Campaign Progress Dashboard")
+        
+        # Create a comprehensive campaign table
+        campaign_data = []
+        for campaign_id, campaign in campaigns.items():
+            history = load_json(HISTORY_FILE, {})
+            campaign_history = history.get(campaign_id, {})
+            
+            sent_count = len(campaign_history.get("sent", []))
+            failed_count = len(campaign_history.get("failed", []))
+            leads_count = campaign['stats']['total_leads']
+            pending_count = max(0, leads_count - sent_count - failed_count)
+            
+            # Calculate progress percentage
+            progress = ((sent_count + failed_count) / leads_count * 100) if leads_count > 0 else 0
+            success_rate = (sent_count / leads_count * 100) if leads_count > 0 else 0
+            
+            # Get daily progress
+            today = datetime.date.today().isoformat()
+            daily_sent = campaign_history.get("daily_sent_tracking", {}).get(today, 0)
+            daily_limit = campaign.get('daily_limit', 120)
+            
+            campaign_data.append({
+                'ID': campaign_id[:8] + '...',
+                'Name': campaign['name'],
+                'Status': campaign['status'].title(),
+                'Total Leads': leads_count,
+                'Sent': sent_count,
+                'Failed': failed_count,
+                'Pending': pending_count,
+                'Progress': f"{progress:.1f}%",
+                'Success Rate': f"{success_rate:.1f}%",
+                'Today Sent': f"{daily_sent}/{daily_limit}",
+                'Daily Limit': daily_limit
+            })
+        
+        # Display campaign table
+        if campaign_data:
+            df_campaigns = pd.DataFrame(campaign_data)
+            st.dataframe(df_campaigns, use_container_width=True)
+        
+        # Detailed campaign analysis
+        st.subheader("🔍 Detailed Campaign Analysis")
         
         for campaign_id, campaign in campaigns.items():
-            with st.expander(f"{campaign['name']} - {campaign['status'].title()}"):
+            with st.expander(f"📋 {campaign['name']} - {campaign['status'].title()}", expanded=False):
                 history = load_json(HISTORY_FILE, {})
                 campaign_history = history.get(campaign_id, {})
                 
                 sent_count = len(campaign_history.get("sent", []))
                 failed_count = len(campaign_history.get("failed", []))
-                total_leads = campaign['stats']['total_leads']
-                success_rate = (sent_count / total_leads * 100) if total_leads > 0 else 0
+                leads_count = campaign['stats']['total_leads']
+                pending_count = max(0, leads_count - sent_count - failed_count)
                 
-                col1, col2, col3, col4 = st.columns(4)
+                # Progress visualization
+                col1, col2 = st.columns(2)
                 
                 with col1:
-                    st.metric("Sent", sent_count)
+                    st.write("**📊 Progress Overview**")
+                    
+                    # Progress bar
+                    progress = ((sent_count + failed_count) / leads_count) if leads_count > 0 else 0
+                    st.progress(progress)
+                    st.write(f"Overall Progress: {progress:.1%}")
+                    
+                    # Metrics
+                    col_a, col_b, col_c = st.columns(3)
+                    with col_a:
+                        st.metric("Sent", sent_count)
+                    with col_b:
+                        st.metric("Failed", failed_count)
+                    with col_c:
+                        st.metric("Pending", pending_count)
                 
                 with col2:
-                    st.metric("Failed", failed_count)
-                
-                with col3:
-                    st.metric("Success Rate", f"{success_rate:.1f}%")
-                
-                with col4:
-                    st.metric("Remaining", max(0, total_leads - sent_count - failed_count))
+                    st.write("**📈 Performance Metrics**")
+                    
+                    success_rate = (sent_count / leads_count * 100) if leads_count > 0 else 0
+                    failure_rate = (failed_count / leads_count * 100) if leads_count > 0 else 0
+                    
+                    col_a, col_b = st.columns(2)
+                    with col_a:
+                        st.metric("Success Rate", f"{success_rate:.1f}%")
+                    with col_b:
+                        st.metric("Failure Rate", f"{failure_rate:.1f}%")
+                    
+                    # Daily progress
+                    today = datetime.date.today().isoformat()
+                    daily_sent = campaign_history.get("daily_sent_tracking", {}).get(today, 0)
+                    daily_limit = campaign.get('daily_limit', 120)
+                    
+                    st.write(f"**📅 Today's Progress: {daily_sent}/{daily_limit}**")
+                    daily_progress = daily_sent / daily_limit if daily_limit > 0 else 0
+                    st.progress(daily_progress)
                 
                 # Recent activity
-                if campaign_history.get("sent"):
-                    st.write("**Recently Sent:**")
-                    for email in campaign_history["sent"][-5:]:
-                        st.write(f"  • {email}")
+                st.write("**📧 Recent Activity**")
                 
-                if campaign_history.get("failed"):
-                    st.write("**Recently Failed:**")
-                    for email in campaign_history["failed"][-5:]:
-                        st.write(f"  • {email}")
+                col1, col2 = st.columns(2)
+                
+                with col1:
+                    if campaign_history.get("sent"):
+                        st.write("**✅ Recently Sent:**")
+                        for email in campaign_history["sent"][-10:]:
+                            st.write(f"  • {email}")
+                    else:
+                        st.write("**✅ Sent:** No emails sent yet")
+                
+                with col2:
+                    if campaign_history.get("failed"):
+                        st.write("**❌ Recently Failed:**")
+                        for email in campaign_history["failed"][-10:]:
+                            st.write(f"  • {email}")
+                    else:
+                        st.write("**❌ Failed:** No failed emails")
+                
+                # Campaign settings
+                st.write("**⚙️ Campaign Settings**")
+                col1, col2, col3 = st.columns(3)
+                
+                with col1:
+                    st.write(f"**Daily Limit:** {campaign.get('daily_limit', 120)}")
+                    st.write(f"**Delay:** {campaign.get('delay', 30)}s")
+                
+                with col2:
+                    st.write(f"**Schedule:** {'Enabled' if campaign.get('schedule_enabled') else 'Disabled'}")
+                    if campaign.get('schedule_time'):
+                        st.write(f"**Time:** {campaign.get('schedule_time')}")
+                
+                with col3:
+                    st.write(f"**Created:** {campaign.get('created_at', 'Unknown')[:10]}")
+                    st.write(f"**Status:** {campaign['status'].title()}")
+        
+        # Deduplication Statistics
+        st.subheader("🔄 Deduplication Statistics")
+        
+        total_duplicates_prevented = 0
+        total_processed_emails = 0
+        
+        for campaign_id, campaign in campaigns.items():
+            history = load_json(HISTORY_FILE, {})
+            campaign_history = history.get(campaign_id, {})
+            
+            sent_count = len(campaign_history.get("sent", []))
+            failed_count = len(campaign_history.get("failed", []))
+            leads_count = campaign['stats']['total_leads']
+            
+            total_processed_emails += sent_count + failed_count
+            total_duplicates_prevented += max(0, leads_count - sent_count - failed_count)
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            st.metric("Total Processed", total_processed_emails)
+        
+        with col2:
+            st.metric("Duplicates Prevented", total_duplicates_prevented)
+        
+        with col3:
+            efficiency = (total_processed_emails / (total_processed_emails + total_duplicates_prevented) * 100) if (total_processed_emails + total_duplicates_prevented) > 0 else 0
+            st.metric("Deduplication Efficiency", f"{efficiency:.1f}%")
+        
+        # Real-time updates info
+        st.info("🔄 **Auto-refresh:** This dashboard updates automatically every 30 seconds. Click 'Refresh' to update manually.")
+        
+        # Manual refresh button
+        if st.button("🔄 Refresh Dashboard"):
+            st.rerun()
+            
     else:
         st.info("No campaigns yet. Create campaigns to see analytics.")
 
@@ -911,7 +1362,7 @@ if st.session_state.get('show_test_email'):
         # Find a campaign with leads and template
         test_campaign = None
         for campaign_id, campaign in campaigns.items():
-            if campaign.get('leads_file') and os.path.exists(campaign['leads_file']) and campaign.get('template_file') and os.path.exists(campaign['template_file']):
+            if campaign.get('leads_file_id') and campaign.get('template_file_id'):
                 test_campaign = campaign
                 break
         
@@ -927,7 +1378,11 @@ if st.session_state.get('show_test_email'):
                     history[test_campaign['id']] = {}
                 campaign_history = history[test_campaign['id']]
                 
-                df = pd.read_csv(test_campaign['leads_file'])
+                # Load leads from MongoDB
+                df = db.get_csv_as_dataframe(test_campaign['id'])
+                if df is None:
+                    st.error("❌ Failed to load leads from database")
+                    st.stop()
                 sent_emails = set(campaign_history.get("sent", []))
                 failed_emails = set(campaign_history.get("failed", []))
                 processing_emails = set(campaign_history.get("processing", []))
@@ -940,7 +1395,11 @@ if st.session_state.get('show_test_email'):
                 if today not in campaign_history["daily_sent_tracking"]:
                     campaign_history["daily_sent_tracking"][today] = 0
                 
-                html_template = open(test_campaign['template_file']).read()
+                # Load template from MongoDB
+                html_template = db.get_email_template(test_campaign['id'])
+                if html_template is None:
+                    st.error("❌ Failed to load template from database")
+                    st.stop()
                 selected_senders = [s for s in senders if s['email'] in test_campaign['selected_senders']]
                 if not selected_senders:
                     selected_senders = senders
@@ -1071,42 +1530,43 @@ if st.session_state.get('show_create_campaign'):
             if st.form_submit_button("💾 Create Campaign"):
                 if campaign_name and selected_senders:
                     if leads_file and template_file:
-                        # Save files
+                        # Create campaign ID
                         campaign_id = str(uuid.uuid4())
-                        leads_filename = f"uploads/leads_{campaign_id}.csv"
-                        template_filename = f"templates/template_{campaign_id}.html"
                         
-                        # Ensure directories exist
-                        os.makedirs("uploads", exist_ok=True)
-                        os.makedirs("templates", exist_ok=True)
+                        # Store files in MongoDB
+                        csv_content = leads_file.getbuffer()
+                        html_content = template_file.getbuffer()
                         
-                        # Save files
-                        with open(leads_filename, "wb") as f:
-                            f.write(leads_file.getbuffer())
+                        csv_file_id = db.store_csv_leads(campaign_id, csv_content, leads_file.name)
+                        template_file_id = db.store_email_template(campaign_id, html_content, template_file.name)
                         
-                        with open(template_filename, "wb") as f:
-                            f.write(template_file.getbuffer())
-                        
-                        # Create campaign
-                        campaigns[campaign_id] = {
-                            'id': campaign_id,
-                            'name': campaign_name,
-                            'description': campaign_description,
-                            'selected_senders': selected_senders,
-                            'leads_file': leads_filename,
-                            'template_file': template_filename,
-                            'status': 'created',
-                            'created_at': datetime.datetime.now().isoformat(),
-                            'schedule_enabled': False,
-                            'start_immediate_daily': False,
-                            'scheduled_date': None,
-                            'schedule_time': '10:00',
-                            'stats': {
-                                'total_leads': len(pd.read_csv(leads_filename)),
-                                'total_sent': 0,
-                                'total_failed': 0
+                        if csv_file_id and template_file_id:
+                            # Read CSV data for stats (before getbuffer() consumed it)
+                            leads_file.seek(0)  # Reset file pointer to beginning
+                            df_leads = pd.read_csv(leads_file)
+                            
+                            # Create campaign
+                            campaigns[campaign_id] = {
+                                'id': campaign_id,
+                                'name': campaign_name,
+                                'description': campaign_description,
+                                'selected_senders': selected_senders,
+                                'leads_file_id': csv_file_id,
+                                'leads_filename': leads_file.name,
+                                'template_file_id': template_file_id,
+                                'template_filename': template_file.name,
+                                'status': 'created',
+                                'created_at': datetime.datetime.now().isoformat(),
+                                'schedule_enabled': False,
+                                'start_immediate_daily': False,
+                                'scheduled_date': None,
+                                'schedule_time': '10:00',
+                                'stats': {
+                                    'total_leads': len(df_leads),
+                                    'total_sent': 0,
+                                    'total_failed': 0
+                                }
                             }
-                        }
                         
                         save_json(CAMPAIGNS_FILE, campaigns)
                         st.success(f"✅ Campaign '{campaign_name}' created successfully!")
